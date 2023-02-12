@@ -4,6 +4,7 @@ import MetaTrader5 as mt5
 import pandas as pd
 import pandas_ta as ta
 import time
+import strategies
 
 def setup():
     # package versions
@@ -21,41 +22,6 @@ def setup():
     else:
         return True
 
-def check_conditions(data_frame):
-    current = data_frame
-    previous = data_frame.shift(1)
-    previous_previous = data_frame.shift(2)
-
-    data_frame['sell'] = (current['high'] >= previous['high']) & (current['low'] > previous['low']) & (current['green'] > current['red']) & (previous['green'] > previous['red']) & (previous_previous['red'] > previous_previous['green']) & (current['close'] < previous['close'])
-    data_frame['buy'] = (current['high'] < previous['high']) & (current['low'] <= previous['low']) & (current['green'] < current['red']) & (previous['green'] < previous['red']) & (previous_previous['red'] < previous_previous['green']) & (current['close'] > previous['close'])
-
-    data_frame['SL'] = 0
-    data_frame['TP'] = 0
-
-    for i in range(len(data_frame)):
-        if data_frame.iloc[i]['sell'] == True:
-            high = data_frame.iloc[i]['high'] + 0.250
-            close = data_frame.iloc[i]['close'] - 0.300
-            sl = data_frame[data_frame['high']==high]
-            if len(sl) > 0:
-                data_frame.at[i,'SL'] = sl.iloc[0]['time']
-            tp = data_frame[data_frame['close']==close]
-            if len(tp) > 0:        
-                data_frame.at[i,'TP'] = tp.iloc[0]['time']
-        elif data_frame.iloc[i]['buy'] == True:
-            high = data_frame.iloc[i]['high'] - 0.250
-            close = data_frame.iloc[i]['close'] + 0.300
-            sl = data_frame[data_frame['high']==high]
-            if len(sl) > 0:
-                data_frame.at[i,'SL'] = sl.iloc[0]['time']
-            tp = data_frame[data_frame['close']==close]
-            if len(tp) > 0:        
-                data_frame.at[i,'TP'] = tp.iloc[0]['time']
-            
-    data_frame = data_frame[(data_frame['sell'] == True) | (data_frame['buy'] == True)] 
-    
-    return data_frame
-
 def get_stochastic_values(data_frame, k=5, d=3):
     data_frame.ta.stoch(high='high', low='low', k=k, d=d, append=True)
 
@@ -65,9 +31,9 @@ def get_stochastic_values(data_frame, k=5, d=3):
     return data_frame
     
 
-def main():
+def main(symbol="GBPJPY", time_frame=mt5.TIMEFRAME_M1):
     # to get data
-    data = mt5.copy_rates_from("GBPJPY", mt5.TIMEFRAME_M15, datetime.now(), 1440)
+    data = mt5.copy_rates_from(symbol, time_frame, datetime.now(), 1440)
     mt5.shutdown()
 
     # for print functionality
@@ -79,13 +45,14 @@ def main():
 
     data_frame = get_stochastic_values(data_frame)
 
-    data_frame = check_conditions(data_frame)
+    data_frame = strategies.strategy_01(data_frame)
 
     data_frame.to_csv('trade_trigger.csv', index=False)
 
     print("SL", len(data_frame[data_frame['SL']!=0]))
     print("TP", len(data_frame[data_frame['TP']!=0]))
     print("Total", len(data_frame))
+    print(f"TP - PERCENTAGE: {(len(data_frame[data_frame['TP']!=0])/len(data_frame))*100:.2f}%")
 
 
 if __name__ == '__main__':
